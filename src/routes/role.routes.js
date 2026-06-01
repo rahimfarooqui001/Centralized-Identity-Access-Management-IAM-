@@ -1,3 +1,5 @@
+// routes/role.routes.js
+
 import express from "express";
 import { requireAdmin } from "../middleware/requireAdmin.js";
 import { requireSessionAuth } from "../middleware/requireSessionAuth.js";

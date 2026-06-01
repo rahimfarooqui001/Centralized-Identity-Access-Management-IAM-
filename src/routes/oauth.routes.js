@@ -1,3 +1,4 @@
+// routes/oauth.routes.js
 import express from "express";
 import { listUserSessionsController, refreshTokenController, revokeSessionController, tokenController } from "../controllers/oauth.controller.js";
 import { logout, logoutAllSessionsController, revokeTokenController } from "../controllers/auth.controller.js";
