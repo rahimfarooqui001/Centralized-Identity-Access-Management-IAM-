@@ -25,6 +25,177 @@ import logger from "../logger/index.js";
 import mongoose from "mongoose";
 import AuditLogModel from "../models/auditLog.model.js";
 import eventBus from "../events/eventBus.js";
+import { consumeAuthzCode, validateAuthzCode } from "../utils/authorizationCode.redis.js";
+import bcrypt from "bcrypt";
+
+
+// export const tokenController = async (req, res) => {
+//   const {
+//     grant_type,
+//     client_id,
+//     client_secret,
+//     code,
+//     redirect_uri
+//   } = req.body;
+
+//   const ip = req.ip;
+//   const userAgent = req.headers["user-agent"];
+
+//   try {
+//     if (grant_type !== "authorization_code") {
+//       return res.status(400).json({
+//         error: "unsupported_grant_type"
+//       });
+//     }
+
+//     if (!client_id || !client_secret || !code || !redirect_uri) {
+//       return res.status(400).json({
+//         error: "invalid_request",
+//         message: "Missing required parameters"
+//       });
+//     }
+
+//     const app = await ApplicationModel.findOne({
+//       clientId: client_id,
+//       status: "ACTIVE"
+//     });
+
+//     if (!app) {
+//       return res.status(401).json({
+//         error: "invalid_client"
+//       });
+//     }
+
+//     const isValidSecret = await bcrypt.compare(
+//       client_secret,
+//       app.clientSecretHash
+//     );
+
+//     if (!isValidSecret) {
+    
+
+//       return res.status(401).json({
+//         error: "invalid_client"
+//       });
+//     }
+
+//     const authCode = await validateAuthorizationCode({
+//       code,
+//       clientAppId: app._id,
+//       redirectUri: redirect_uri
+//     });
+
+//     const user = await UserModel.findById(authCode.userId);
+
+//     if (!user) {
+//       return res.status(401).json({
+//         error: "invalid_grant"
+//       });
+//     }
+
+//     await consumeAuthorizationCode(authCode);
+
+//     const access = await UserAppAccessModel.findOne({
+//       userId: user._id,
+//       appId: app._id,
+//       status: "ACTIVE"
+//     }).populate("roleIds");
+
+//     if (!access) {
+//       eventBus.emit("auth.access.denied", {
+//         userId: user._id,
+//         appId: app._id,
+//         ip,
+//         userAgent,
+//         status: "failure",
+//         reason: "access_denied"
+//       });
+
+//       return res.status(403).json({
+//         error: "access_denied"
+//       });
+//     }
+
+//     const permissionIds = access.roleIds.flatMap(
+//       role => role.permissionIds
+//     );
+
+//     const permissions = await PermissionModel.find({
+//       _id: { $in: permissionIds },
+//       status: "ACTIVE"
+//     });
+//     console.log(permissions,' fro token con')
+
+//     const permissionKeys = permissions.map(p => p.key);
+
+//     if (!permissions) {
+//   return res.status(403).json({
+//     error: "no_active_permissions",
+//     message: "User has no active permissions"
+//   });
+// }
+
+//     const accessToken = createAccessToken({
+//       userId: user._id,
+//       appId: app._id,
+//       permissions: permissionKeys
+//     });
+
+//     const refreshToken = await createRefreshToken({
+//       userId: user._id,
+//       appId: app._id,
+//       ip,
+//       userAgent
+//     });
+
+//     const isProd = env.nodeEnv === "production";
+
+//     res.cookie("refreshToken", refreshToken, {
+//       httpOnly: true,
+//       secure: isProd,
+//       sameSite: isProd ? "none" : "lax",
+//       path: "/oauth",
+//       maxAge: 7 * 24 * 60 * 60 * 1000
+//     });
+
+//     eventBus.emit("auth.token.issued", {
+//       userId: user._id,
+//       appId: app._id,
+//       ip,
+//       userAgent,
+//       status: "success",
+//       message: "Access and refresh tokens issued"
+//     });
+
+//     return res.json({
+//       access_token: accessToken,
+//       token_type: "Bearer",
+//       expires_in: 900
+//     });
+
+//   } catch (error) {
+
+//     if (error.code) {
+//       return res.status(error.statusCode || 400).json({
+//         error: error.code,
+//         message: error.message
+//       });
+//     }
+
+//     eventBus.emit("auth.token.error", {
+//       ip,
+//       userAgent,
+//       status: "failure",
+//       reason: error.message
+//     });
+
+//     return res.status(500).json({
+//       error: "server_error"
+//     });
+//   }
+// };
+
+
 
 
 export const tokenController = async (req, res) => {
@@ -33,70 +204,76 @@ export const tokenController = async (req, res) => {
     client_id,
     client_secret,
     code,
-    redirect_uri
+    redirect_uri,
   } = req.body;
 
   const ip = req.ip;
   const userAgent = req.headers["user-agent"];
 
   try {
+    // 1. Grant type validation
     if (grant_type !== "authorization_code") {
       return res.status(400).json({
-        error: "unsupported_grant_type"
+        error: "unsupported_grant_type",
       });
     }
 
+    // 2. Required fields check
     if (!client_id || !client_secret || !code || !redirect_uri) {
       return res.status(400).json({
         error: "invalid_request",
-        message: "Missing required parameters"
+        message: "Missing required parameters",
       });
     }
 
+    // 3. Validate client app
     const app = await ApplicationModel.findOne({
       clientId: client_id,
-      status: "ACTIVE"
+      status: "ACTIVE",
     });
 
     if (!app) {
       return res.status(401).json({
-        error: "invalid_client"
+        error: "invalid_client",
       });
     }
 
+    // 4. Validate client secret
     const isValidSecret = await bcrypt.compare(
       client_secret,
       app.clientSecretHash
     );
 
     if (!isValidSecret) {
-    
-
       return res.status(401).json({
-        error: "invalid_client"
+        error: "invalid_client",
       });
     }
 
-    const authCode = await validateAuthorizationCode({
+    // 5. Validate authorization code (Redis)
+    const authCode = await validateAuthzCode({
       code,
       clientAppId: app._id,
-      redirectUri: redirect_uri
+      redirectUri: redirect_uri,
     });
 
+    // 6. Get user
     const user = await UserModel.findById(authCode.userId);
 
     if (!user) {
       return res.status(401).json({
-        error: "invalid_grant"
+        error: "invalid_grant",
       });
     }
 
-    await consumeAuthorizationCode(authCode);
+    // 7. Consume authorization code (prevent replay)
+    await consumeAuthzCode(code);
 
+    // 8. Check app access
     const access = await UserAppAccessModel.findOne({
       userId: user._id,
       appId: app._id,
-      status: "ACTIVE"
+      status: "ACTIVE",
     }).populate("roleIds");
 
     if (!access) {
@@ -106,46 +283,48 @@ export const tokenController = async (req, res) => {
         ip,
         userAgent,
         status: "failure",
-        reason: "access_denied"
+        reason: "access_denied",
       });
 
       return res.status(403).json({
-        error: "access_denied"
+        error: "access_denied",
       });
     }
 
+    // 9. Resolve permissions
     const permissionIds = access.roleIds.flatMap(
-      role => role.permissionIds
+      (role) => role.permissionIds
     );
 
     const permissions = await PermissionModel.find({
       _id: { $in: permissionIds },
-      status: "ACTIVE"
+      status: "ACTIVE",
     });
-    console.log(permissions,' fro token con')
 
-    const permissionKeys = permissions.map(p => p.key);
+    const permissionKeys = permissions.map((p) => p.key);
 
-    if (!permissions) {
-  return res.status(403).json({
-    error: "no_active_permissions",
-    message: "User has no active permissions"
-  });
-}
+    if (!permissions.length) {
+      return res.status(403).json({
+        error: "no_active_permissions",
+        message: "User has no active permissions",
+      });
+    }
 
+    // 10. Create tokens
     const accessToken = createAccessToken({
       userId: user._id,
       appId: app._id,
-      permissions: permissionKeys
+      permissions: permissionKeys,
     });
 
     const refreshToken = await createRefreshToken({
       userId: user._id,
       appId: app._id,
       ip,
-      userAgent
+      userAgent,
     });
 
+    // 11. Set cookie
     const isProd = env.nodeEnv === "production";
 
     res.cookie("refreshToken", refreshToken, {
@@ -153,30 +332,30 @@ export const tokenController = async (req, res) => {
       secure: isProd,
       sameSite: isProd ? "none" : "lax",
       path: "/oauth",
-      maxAge: 7 * 24 * 60 * 60 * 1000
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
+    // 12. Event log
     eventBus.emit("auth.token.issued", {
       userId: user._id,
       appId: app._id,
       ip,
       userAgent,
       status: "success",
-      message: "Access and refresh tokens issued"
+      message: "Access and refresh tokens issued",
     });
 
+    // 13. Response
     return res.json({
       access_token: accessToken,
       token_type: "Bearer",
-      expires_in: 900
+      expires_in: 900,
     });
-
   } catch (error) {
-
     if (error.code) {
       return res.status(error.statusCode || 400).json({
         error: error.code,
-        message: error.message
+        message: error.message,
       });
     }
 
@@ -184,14 +363,18 @@ export const tokenController = async (req, res) => {
       ip,
       userAgent,
       status: "failure",
-      reason: error.message
+      reason: error.message,
     });
 
     return res.status(500).json({
-      error: "server_error"
+      error: "server_error",
     });
   }
 };
+
+
+
+
  
 export const listUserSessionsController = async (req, res) => {
   try {

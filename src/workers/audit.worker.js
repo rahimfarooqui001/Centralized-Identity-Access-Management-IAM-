@@ -1,3 +1,5 @@
+// workers/audit.worker.js
+
 import { Worker } from "bullmq";
 import connection from "../config/redis.js";
 import AuditLogModel from "../models/auditLog.model.js";

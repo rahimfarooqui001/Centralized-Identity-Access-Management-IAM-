@@ -16,6 +16,7 @@ import refreshTmodel from "../models/refreshToken.model.js";
 import { AppError } from "../utils/errors.js";
 import UserTokenModel from "../models/userToken.model.js";
 import { addUserSession } from "../utils/session.service.js";
+import { createAuthzCode } from "../utils/authorizationCode.redis.js";
 
 
 export const login = async (req, res) => {
@@ -41,21 +42,21 @@ export const login = async (req, res) => {
 
       return res.status(401).json({ message: "Invalid credentials" });
     }
-    console.log({
-  enteredPassword: JSON.stringify(password),
-  storedHash: user.passwordHash
-});
+//     console.log({
+//   enteredPassword: JSON.stringify(password),
+//   storedHash: user.passwordHash
+// });
 
 const isvalid = await bcrypt.compare(
   password.trim(),
   user.passwordHash
 );
 
-console.log("VALID:", isvalid);
-console.log({
-  password,
-  hash: user.passwordHash
-});
+// console.log("VALID:", isvalid);
+// console.log({
+//   password,
+//   hash: user.passwordHash
+// });
     const valid = await bcrypt.compare(password, user.passwordHash);
 
     if (!valid) {
@@ -152,9 +153,97 @@ export const getMyApps = async (req, res) => {
 
 
 
+// export const selectApp = async (req, res) => {
+//   const userId = req.session?.userId;
+//   const { appId, state } = req.body;
+
+//   const ip = req.ip;
+//   const userAgent = req.headers["user-agent"];
+
+//   try {
+//     if (!userId) {
+//       eventBus.emit("auth.select_app.failed", {
+//         userId: null,
+//         appId,
+//         message: "App selection failed",
+//         ip,
+//         userAgent,
+//         status: "failure",
+//         reason: "unauthenticated"
+//       });
+
+//       return res.status(401).json({ message: "Not authenticated" });
+//     }
+
+//     const access = await UserAppAccessModel.findOne({
+//       userId,
+//       appId: new mongoose.Types.ObjectId(appId),
+//       status: "ACTIVE"
+//     }).populate("appId");
+
+//     if (!access) {
+//       eventBus.emit("auth.select_app.failed", {
+//         userId,
+//         appId,
+//         message: "App selection failed",
+//         ip,
+//         userAgent,
+//         status: "failure",
+//         reason: "access_denied"
+//       });
+
+//       return res.status(403).json({ message: "Access denied" });
+//     }
+
+//     const app = access.appId;
+
+//     const code = await createAuthorizationCode({
+//       userId,
+//       appId: app._id,
+//       redirectUri: app.defaultRedirectUri
+//     });
+
+//     const redirectUrl = new URL(app.defaultRedirectUri);
+//     redirectUrl.searchParams.append("code", code);
+
+//     if (state) {
+//       redirectUrl.searchParams.append("state", state);
+//     }
+
+//     eventBus.emit("auth.select_app.success", {
+//       userId,
+//       appId: app._id,
+//       message: "Application selected and authorization started",
+//       ip,
+//       userAgent,
+//       status: "success"
+//     });
+
+//     return res.redirect(redirectUrl.toString());
+
+//   } catch (error) {
+//     eventBus.emit("auth.select_app.failed", {
+//       userId: userId || null,
+//       appId,
+//       message: "App selection failed",
+//       ip,
+//       userAgent,
+//       status: "failure",
+//       reason: "server_error"
+//     });
+
+//     return res.status(500).json({
+//       message: "Failed to select application"
+//     });
+//   }
+// };
+
+
+
+
 export const selectApp = async (req, res) => {
   const userId = req.session?.userId;
-  const { appId, state } = req.body;
+  const { appId } = req.body;
 
   const ip = req.ip;
   const userAgent = req.headers["user-agent"];
@@ -168,7 +257,7 @@ export const selectApp = async (req, res) => {
         ip,
         userAgent,
         status: "failure",
-        reason: "unauthenticated"
+        reason: "unauthenticated",
       });
 
       return res.status(401).json({ message: "Not authenticated" });
@@ -177,7 +266,7 @@ export const selectApp = async (req, res) => {
     const access = await UserAppAccessModel.findOne({
       userId,
       appId: new mongoose.Types.ObjectId(appId),
-      status: "ACTIVE"
+      status: "ACTIVE",
     }).populate("appId");
 
     if (!access) {
@@ -188,7 +277,7 @@ export const selectApp = async (req, res) => {
         ip,
         userAgent,
         status: "failure",
-        reason: "access_denied"
+        reason: "access_denied",
       });
 
       return res.status(403).json({ message: "Access denied" });
@@ -196,30 +285,26 @@ export const selectApp = async (req, res) => {
 
     const app = access.appId;
 
-    const code = await createAuthorizationCode({
+    const code = await createAuthzCode({
       userId,
-      appId: app._id,
-      redirectUri: app.defaultRedirectUri
+      appId: app._id.toString(),
+      redirectUri: app.defaultRedirectUri,
+      ttlSeconds: 120,
     });
 
     const redirectUrl = new URL(app.defaultRedirectUri);
     redirectUrl.searchParams.append("code", code);
 
-    if (state) {
-      redirectUrl.searchParams.append("state", state);
-    }
-
     eventBus.emit("auth.select_app.success", {
       userId,
       appId: app._id,
-      message: "Application selected and authorization started",
+      message: "Authorization code issued",
       ip,
       userAgent,
-      status: "success"
+      status: "success",
     });
 
     return res.redirect(redirectUrl.toString());
-
   } catch (error) {
     eventBus.emit("auth.select_app.failed", {
       userId: userId || null,
@@ -228,17 +313,14 @@ export const selectApp = async (req, res) => {
       ip,
       userAgent,
       status: "failure",
-      reason: "server_error"
+      reason: "server_error",
     });
 
     return res.status(500).json({
-      message: "Failed to select application"
+      message: "Failed to select application",
     });
   }
 };
-
-
-
 
 
 export const logout = async (req, res) => {

@@ -61,7 +61,6 @@ export const createRefreshToken = async ({
     userAgent,
     expiresAt: new Date(Date.now() + REFRESH_TOKEN_TTL_MS),
   });
-console.log(rawToken,'raw refresh token ')
   return rawToken;
 };
 

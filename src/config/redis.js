@@ -1,3 +1,5 @@
+// config/redis.js
+
 import IORedis from "ioredis";
 import env from "./env.js";
 

@@ -1,3 +1,4 @@
+// config/redisSession.js
 import { createClient } from "redis";
 import env from "./env.js";
 

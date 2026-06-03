@@ -8,9 +8,11 @@ const requiredEnvVars = [
   "MONGODB_URI",
   "JWT_ACCESS_SECRET",
   "JWT_REFRESH_SECRET",
-  "APP_BASE_URL",
-  "SALT_ROUNDS",
+  "CORS_ORIGIN",
   "SESSION_SECRET",
+  "REDIS_PORT",
+  "REDIS_HOST",
+  "REDIS_PASSWORD",
 ];
 
 requiredEnvVars.forEach((key) => {
@@ -23,7 +25,7 @@ const env = {
   port: process.env.PORT,
   nodeEnv:process.env.NODE_ENV,
     mongoUri :process.env.MONGODB_URI,
-    appBaseUrl:process.env.APP_BASE_URL,
+    corsOrigin:process.env.CORS_ORIGIN,
   jwt: {
     accessSecret: process.env.JWT_ACCESS_SECRET,
     refreshSecret:process.env.JWT_REFRESH_SECRET
@@ -34,7 +36,6 @@ const env = {
     redisPassword:process.env.REDIS_PASSWORD,
     redisUsername:process.env.REDIS_USERNAME,
   },
-   saltRounds:process.env.SALT_ROUNDS,
    sessionSecret:process.env.SESSION_SECRET,
 bootStrap:{
 bootstrapAdminEmail: process.env.BOOTSTRAP_ADMIN_EMAIL,
